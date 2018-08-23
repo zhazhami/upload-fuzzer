@@ -4,18 +4,24 @@ import java.awt.event.ActionEvent;
 import java.awt.event.ActionListener;
 import javax.swing.*;
 import java.lang.System;
+import java.io.PrintWriter;
 
 
 public class FuzzerPanel extends JTabbedPane{
     private IBurpExtenderCallbacks callbacks;
     private IExtensionHelpers helpers;
     public IHttpRequestResponse message;
+    PrintWriter stdout;
     public JLabel host = new JLabel("Host: ");
     public JLabel port = new JLabel("Port: ");
     public JTextField ehost = new JTextField(20);
     public JTextField eport = new JTextField(10);
+    public JCheckBox https = new JCheckBox();
+    public JLabel usehttps = new JLabel("Use HTTPS");
     public ITextEditor content;
-    public int[] pos = new int[2];
+    public int[][] fname_pos = new int[100][2];
+    public int[] content_type_pos = new int[2];
+    public int fname_cnt = 0;
     public static byte[] Replace(byte[] source, int[] _pos, byte[] s){
         byte[] target = new byte[source.length-(_pos[1]-_pos[0])+s.length];
         for(int i = 0,j=0; i < source.length; i++){
@@ -46,6 +52,11 @@ public class FuzzerPanel extends JTabbedPane{
         content.setText(message.getRequest());
         ehost.setText(message.getHttpService().getHost());
         eport.setText(message.getHttpService().getPort()+"");
+        boolean ishttps = false;
+        if(message.getHttpService().getProtocol()=="https")ishttps=true;
+        https.setSelected(ishttps);
+        stdout = new PrintWriter(callbacks.getStdout(), true);
+        stdout.print("hehe");
         initComponents();
     }
 
@@ -70,11 +81,15 @@ public class FuzzerPanel extends JTabbedPane{
         JPanel portPanel = new JPanel(new FlowLayout(FlowLayout.LEFT));
         portPanel.add(port);
         portPanel.add(eport);
+        JPanel httpsPanel = new JPanel(new FlowLayout(FlowLayout.LEFT));
+        portPanel.add(https);
+        portPanel.add(usehttps);
 
         _target.add(target_title);
         _target.add(hostPanel);
         _target.add(portPanel);
-        _target.add(Box.createVerticalStrut(1000));
+        _target.add(httpsPanel);
+        _target.add(Box.createVerticalStrut(500));
         this.add(target,"Target");
 
         JPanel positions = new JPanel();
@@ -98,14 +113,14 @@ public class FuzzerPanel extends JTabbedPane{
             public void actionPerformed(ActionEvent e) {
                 byte[] source = content.getText();
                 int[] bounds = content.getSelectionBounds();
-                pos[0] = bounds[0]+helpers.bytesToString(content.getSelectedText()).lastIndexOf(".")+1;
-                pos[1] = bounds[1];
-                byte[] s = new byte[pos[1]-pos[0]+2];
+                fname_pos[fname_cnt][0] = bounds[0]+helpers.bytesToString(content.getSelectedText()).lastIndexOf(".")+1;
+                fname_pos[fname_cnt][1] = bounds[1];
+                byte[] s = new byte[fname_pos[fname_cnt][1]-fname_pos[fname_cnt][0]+2];
                 s[0] = (byte)'$';
                 s[s.length-1] = (byte)'$';
-                System.arraycopy(source,pos[0],s,1,pos[1]-pos[0]);
-                content.setText(Replace(content.getText(),pos,s));
-                pos[1]+=2;
+                System.arraycopy(source,fname_pos[fname_cnt][0],s,1,fname_pos[fname_cnt][1]-fname_pos[fname_cnt][0]);
+                content.setText(Replace(content.getText(),fname_pos[fname_cnt],s));
+                fname_pos[fname_cnt++][1]+=2;
             }
         });
         _right.add(add);
@@ -113,13 +128,19 @@ public class FuzzerPanel extends JTabbedPane{
         JButton clear = new JButton("Clear");
         clear.addActionListener(new ActionListener() {
             public void actionPerformed(ActionEvent e) {
-                byte[] source = content.getText();
-                byte[] s = subBytes(source,pos[0]+1,pos[1]-pos[0]-2);
-                content.setText(Replace(content.getText(),pos,s));
+                for(int i=0;i<fname_pos.length;i++) {
+                    byte[] source = content.getText();
+                    byte[] s = subBytes(source, fname_pos[i][0] + 1, fname_pos[i][1] - fname_pos[i][0] - 2);
+                    content.setText(Replace(content.getText(), fname_pos[i], s));
+                }
             }
         });
         clear.setPreferredSize(new Dimension(100,30));
         _right.add(clear);
+//        JButton cnt_type = new JButton("Content-Type §");
+//
+//        _right.add(cnt_type);
+        add.setPreferredSize(new Dimension(100,30));
         positions.add(right, BorderLayout.EAST);
 
         JPanel top = new JPanel(new CardLayout(50,10));
@@ -131,6 +152,7 @@ public class FuzzerPanel extends JTabbedPane{
         _top.add(positions_title,BorderLayout.WEST);
         JButton attack = new JButton("Attack");
         attack.setPreferredSize(new Dimension(80,30));
+
         attack.addActionListener(new ActionListener() {
             public void actionPerformed(ActionEvent e) {
                 JFrame frame = new JFrame("Fuzzer attack " + num);
@@ -141,7 +163,7 @@ public class FuzzerPanel extends JTabbedPane{
                 int screenWidth = screenSize.width; //获取屏幕的宽
                 int screenHeight = screenSize.height; //获取屏幕的高
                 frame.setLocation(screenWidth/2-windowWidth/2-400, screenHeight/2-windowHeight/2-400);//设置窗口居中显示
-                AttackPanel attackpanel = new AttackPanel(ehost.getText(),Integer.parseInt(eport.getText()),content.getText(),pos,callbacks);
+                AttackPanel attackpanel = new AttackPanel(ehost.getText(),Integer.parseInt(eport.getText()),https.isSelected(),content.getText(),fname_pos,fname_cnt,callbacks);
                 frame.add(attackpanel);
                 frame.setSize(800, 600);
                 frame.setVisible(true);
